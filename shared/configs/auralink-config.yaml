@@ -1,0 +1,94 @@
+# AuraLink Shared Configuration
+version: "1.0"
+
+# Database Configuration
+database:
+  provider: supabase
+  host: db.mydyucwvdnjbhqigseis.supabase.co
+  port: 5432
+  database: postgres
+  max_connections: 100
+  connection_timeout: 30s
+  
+# Redis Configuration
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  max_retries: 3
+  pool_size: 10
+
+# Service Discovery
+services:
+  webrtc:
+    name: auralink-webrtc-server
+    port: 7880
+    health_check: /health
+  ai_core:
+    name: auralink-ai-core
+    port: 8000
+    health_check: /health
+  dashboard:
+    name: auralink-dashboard-service
+    port: 8080
+    health_check: /health
+  ingress_egress:
+    name: auralink-ingress-egress
+    port: 9090
+    health_check: /health
+  communication:
+    name: auralink-communication-service
+    port: 8008
+    health_check: /health
+
+# Authentication Configuration
+auth:
+  provider: supabase
+  jwt_expiration: 24h
+  refresh_token_expiration: 168h # 7 days
+  api_key_expiration: never
+
+# AIC Protocol Configuration
+aic:
+  enabled: false
+  compression_ratio: 0.8
+  fallback_enabled: true
+  min_bandwidth: 500 # kbps
+
+# Monitoring Configuration
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9090
+    scrape_interval: 15s
+  jaeger:
+    enabled: true
+    endpoint: http://localhost:14268/api/traces
+    sampling_rate: 0.1
+  logging:
+    level: info
+    format: json
+    output: stdout
+
+# Rate Limiting
+rate_limit:
+  enabled: true
+  requests_per_minute: 100
+  burst: 150
+
+# CORS Configuration
+cors:
+  allowed_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+  allowed_headers:
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+  max_age: 86400

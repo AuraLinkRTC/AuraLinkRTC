@@ -1,0 +1,33 @@
+# AuraLink Monorepo Code Owners
+# Each line is a file pattern followed by one or more owners
+# Order is important; the last matching pattern takes precedence
+
+# Global owners (entire repo)
+* @naveen
+
+# Core services ownership
+/auralink-webrtc-server/ @naveen
+/auralink-ai-core/ @naveen
+/auralink-dashboard-service/ @naveen
+/auralink-ingress-egress/ @naveen
+/auralink-communication-service/ @naveen
+
+# Shared libraries (require review from multiple owners)
+/shared/ @naveen
+
+# Infrastructure (DevOps)
+/infrastructure/ @naveen
+/scripts/ @naveen
+/Makefile @naveen
+/docker-compose*.yml @naveen
+
+# Documentation
+/AuraLinkDocs/ @naveen
+/*.md @naveen
+
+# CI/CD
+/.github/ @naveen
+
+# Configuration files (require careful review)
+/.env* @naveen
+/shared/configs/ @naveen

@@ -1,0 +1,336 @@
+// ================================================================
+// AuraLink AIC Protocol - gRPC Service Definition
+// ================================================================
+// Purpose: Define gRPC service for AI-driven compression between
+//          WebRTC Server and AI Core
+// Version: 1.0.0
+// ================================================================
+
+syntax = "proto3";
+
+package auralink.aic.v1;
+
+option go_package = "github.com/auralink/shared/proto/aic";
+
+// ================================================================
+// AIC Compression Service
+// ================================================================
+// Main service for AI-driven frame compression
+
+service AICCompressionService {
+    // Compress a single frame with AI
+    rpc CompressFrame(CompressFrameRequest) returns (CompressFrameResponse);
+    
+    // Compress frames in streaming mode (real-time)
+    rpc CompressStream(stream CompressFrameRequest) returns (stream CompressFrameResponse);
+    
+    // Get compression hints without actual compression (prediction)
+    rpc GetCompressionHints(CompressionHintRequest) returns (CompressionHintResponse);
+    
+    // Analyze network conditions for adaptive compression
+    rpc AnalyzeNetworkConditions(NetworkAnalysisRequest) returns (NetworkAnalysisResponse);
+    
+    // Health check for AIC service
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ================================================================
+// Request/Response Messages
+// ================================================================
+
+// Request to compress a single frame
+message CompressFrameRequest {
+    // Frame identification
+    string session_id = 1;
+    string call_id = 2;
+    string participant_id = 3;
+    int64 frame_number = 4;
+    int64 timestamp_us = 5; // Microseconds since epoch
+    
+    // Frame data
+    bytes frame_data = 6; // Raw frame bytes
+    FrameType frame_type = 7;
+    FrameMetadata metadata = 8;
+    
+    // Compression preferences
+    CompressionMode mode = 9;
+    float target_compression_ratio = 10; // 0.0 - 1.0
+    int32 max_latency_ms = 11;
+    
+    // Network context
+    NetworkConditions network = 12;
+}
+
+// Response with compressed frame
+message CompressFrameResponse {
+    // Status
+    CompressionStatus status = 1;
+    string error_message = 2;
+    
+    // Compressed data
+    bytes compressed_data = 3;
+    int32 original_size_bytes = 4;
+    int32 compressed_size_bytes = 5;
+    float actual_compression_ratio = 6;
+    
+    // AI metadata
+    AIMetadata ai_metadata = 7;
+    
+    // Performance metrics
+    PerformanceMetrics performance = 8;
+    
+    // Fallback indicator
+    bool fallback_used = 9;
+    string fallback_reason = 10;
+}
+
+// Request for compression hints only
+message CompressionHintRequest {
+    string session_id = 1;
+    FrameMetadata metadata = 2;
+    NetworkConditions network = 3;
+    CompressionMode mode = 4;
+}
+
+// Response with compression hints
+message CompressionHintResponse {
+    float recommended_compression_ratio = 1;
+    float predicted_quality_score = 2;
+    int32 predicted_latency_ms = 3;
+    string recommended_codec = 4;
+    map<string, float> hints = 5; // Additional AI hints
+    float confidence_score = 6;
+}
+
+// Network analysis request
+message NetworkAnalysisRequest {
+    string session_id = 1;
+    repeated NetworkSample samples = 2; // Recent network samples
+    int32 analysis_window_seconds = 3;
+}
+
+// Network analysis response
+message NetworkAnalysisResponse {
+    float available_bandwidth_kbps = 1;
+    float predicted_bandwidth_kbps = 2; // Next 5 seconds
+    float network_stability_score = 3; // 0.0 - 1.0
+    NetworkQuality quality = 4;
+    string recommendation = 5;
+    bool enable_aggressive_compression = 6;
+}
+
+// Health check request
+message HealthCheckRequest {
+    string service_name = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+    HealthStatus status = 1;
+    string version = 2;
+    int64 uptime_seconds = 3;
+    ResourceUsage resources = 4;
+    ModelStatus model_status = 5;
+}
+
+// ================================================================
+// Supporting Types
+// ================================================================
+
+// Frame type enumeration
+enum FrameType {
+    FRAME_TYPE_UNKNOWN = 0;
+    FRAME_TYPE_VIDEO = 1;
+    FRAME_TYPE_AUDIO = 2;
+    FRAME_TYPE_SCREEN = 3;
+    FRAME_TYPE_DATA = 4;
+}
+
+// Compression mode
+enum CompressionMode {
+    MODE_OFF = 0;
+    MODE_CONSERVATIVE = 1; // Minimal compression, max quality
+    MODE_ADAPTIVE = 2; // Balance compression and quality
+    MODE_AGGRESSIVE = 3; // Max compression, acceptable quality
+}
+
+// Compression status
+enum CompressionStatus {
+    STATUS_SUCCESS = 0;
+    STATUS_FALLBACK = 1;
+    STATUS_ERROR = 2;
+    STATUS_TIMEOUT = 3;
+    STATUS_QUALITY_THRESHOLD_NOT_MET = 4;
+}
+
+// Network quality classification
+enum NetworkQuality {
+    NETWORK_UNKNOWN = 0;
+    NETWORK_EXCELLENT = 1; // >10 Mbps
+    NETWORK_GOOD = 2; // 5-10 Mbps
+    NETWORK_FAIR = 3; // 1-5 Mbps
+    NETWORK_POOR = 4; // <1 Mbps
+}
+
+// Health status
+enum HealthStatus {
+    HEALTH_UNKNOWN = 0;
+    HEALTH_HEALTHY = 1;
+    HEALTH_DEGRADED = 2;
+    HEALTH_UNHEALTHY = 3;
+}
+
+// Frame metadata
+message FrameMetadata {
+    // Video metadata
+    int32 width = 1;
+    int32 height = 2;
+    int32 fps = 3;
+    string codec = 4; // H264, VP9, etc.
+    string resolution_class = 5; // 720p, 1080p, 4K
+    
+    // Audio metadata
+    int32 sample_rate = 6;
+    int32 channels = 7;
+    int32 bitrate_kbps = 8;
+    
+    // Encoding info
+    bool is_keyframe = 9;
+    int64 pts = 10; // Presentation timestamp
+    int64 dts = 11; // Decode timestamp
+}
+
+// Network conditions
+message NetworkConditions {
+    int32 available_bandwidth_kbps = 1;
+    int32 rtt_ms = 2; // Round-trip time
+    float packet_loss_percent = 3;
+    float jitter_ms = 4;
+    string connection_type = 5; // UDP, TCP, TURN
+}
+
+// AI metadata embedded in RTP
+message AIMetadata {
+    string model_type = 1; // encodec, lyra, etc.
+    string model_version = 2;
+    float compression_ratio = 3;
+    float quality_score = 4; // 0.0 - 1.0
+    float confidence = 5;
+    int64 inference_timestamp_us = 6;
+    map<string, float> custom_hints = 7;
+    
+    // Quality metrics
+    float psnr_db = 8; // Peak Signal-to-Noise Ratio
+    float ssim = 9; // Structural Similarity Index
+}
+
+// Performance metrics
+message PerformanceMetrics {
+    int32 inference_latency_ms = 1;
+    int32 preprocessing_ms = 2;
+    int32 model_inference_ms = 3;
+    int32 postprocessing_ms = 4;
+    int32 total_latency_ms = 5;
+    
+    // Resource usage
+    float gpu_utilization_percent = 6;
+    int32 memory_used_mb = 7;
+    float cpu_utilization_percent = 8;
+}
+
+// Network sample for analysis
+message NetworkSample {
+    int64 timestamp_us = 1;
+    int32 bandwidth_kbps = 2;
+    int32 rtt_ms = 3;
+    float packet_loss_percent = 4;
+}
+
+// Resource usage
+message ResourceUsage {
+    float cpu_percent = 1;
+    float memory_percent = 2;
+    float gpu_percent = 3;
+    int32 active_sessions = 4;
+    int64 total_frames_processed = 5;
+}
+
+// Model status
+message ModelStatus {
+    string model_type = 1;
+    string version = 2;
+    bool loaded = 3;
+    bool gpu_available = 4;
+    int32 inference_queue_length = 5;
+    float avg_inference_ms = 6;
+}
+
+// ================================================================
+// Batch Operations (for efficiency)
+// ================================================================
+
+message BatchCompressRequest {
+    repeated CompressFrameRequest frames = 1;
+    bool parallel_processing = 2;
+}
+
+message BatchCompressResponse {
+    repeated CompressFrameResponse frames = 1;
+    int32 successful_count = 2;
+    int32 failed_count = 3;
+    int32 total_latency_ms = 4;
+}
+
+// ================================================================
+// Configuration Messages
+// ================================================================
+
+message AICConfig {
+    bool enabled = 1;
+    CompressionMode default_mode = 2;
+    float target_compression_ratio = 3;
+    int32 max_inference_latency_ms = 4;
+    float min_quality_threshold = 5;
+    bool enable_fallback = 6;
+    bool enable_predictive_compression = 7;
+    bool enable_gpu = 8;
+    string preferred_model = 9;
+}
+
+// ================================================================
+// Monitoring and Telemetry
+// ================================================================
+
+message TelemetryData {
+    string session_id = 1;
+    int64 timestamp_us = 2;
+    int32 frames_processed = 3;
+    float avg_compression_ratio = 4;
+    float avg_quality_score = 5;
+    int32 fallback_count = 6;
+    float total_bandwidth_saved_mb = 7;
+    PerformanceMetrics avg_performance = 8;
+}
+
+// ================================================================
+// Error Codes
+// ================================================================
+
+enum ErrorCode {
+    ERROR_NONE = 0;
+    ERROR_INVALID_INPUT = 1;
+    ERROR_MODEL_NOT_LOADED = 2;
+    ERROR_INFERENCE_TIMEOUT = 3;
+    ERROR_INFERENCE_FAILED = 4;
+    ERROR_QUALITY_TOO_LOW = 5;
+    ERROR_RESOURCE_EXHAUSTED = 6;
+    ERROR_NETWORK_UNSTABLE = 7;
+    ERROR_UNKNOWN = 99;
+}
+
+message ErrorDetails {
+    ErrorCode code = 1;
+    string message = 2;
+    string detail = 3;
+    map<string, string> metadata = 4;
+}

@@ -1,0 +1,442 @@
+---
+# ================================================================
+# AuraLink AIC Protocol - Kubernetes Deployment
+# ================================================================
+# Purpose: Deploy AI Core with AIC Protocol support
+# Dependencies: Phase 2 deployments
+# ================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auralink-aic
+  labels:
+    app: auralink
+    component: aic-protocol
+
+---
+# ================================================================
+# AI Core Service (with gRPC)
+# ================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-core-aic-config
+  namespace: auralink-aic
+data:
+  AIC_ENABLED: "true"
+  AIC_MODE: "adaptive"
+  AIC_TARGET_COMPRESSION_RATIO: "0.80"
+  AIC_MAX_LATENCY_MS: "20"
+  AIC_MODEL_TYPE: "encodec"
+  AIC_MIN_QUALITY_SCORE: "0.85"
+  GRPC_PORT: "50051"
+  HTTP_PORT: "8000"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-core-aic
+  namespace: auralink-aic
+  labels:
+    app: ai-core
+    component: aic
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+  selector:
+    app: ai-core
+    component: aic
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-core-aic
+  namespace: auralink-aic
+  labels:
+    app: ai-core
+    component: aic
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ai-core
+      component: aic
+  template:
+    metadata:
+      labels:
+        app: ai-core
+        component: aic
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: ai-core
+          image: auralink/ai-core:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          env:
+            - name: SERVICE_PORT
+              value: "8000"
+            - name: GRPC_PORT
+              value: "50051"
+            - name: ENVIRONMENT
+              value: "production"
+            - name: LOG_LEVEL
+              value: "info"
+          envFrom:
+            - configMapRef:
+                name: ai-core-aic-config
+            - secretRef:
+                name: ai-core-secrets
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+              readOnly: true
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: aic-models-pvc
+
+---
+# ================================================================
+# AI Core with GPU Support (Optional)
+# ================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-core-aic-gpu
+  namespace: auralink-aic
+  labels:
+    app: ai-core
+    component: aic-gpu
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-core
+      component: aic-gpu
+  template:
+    metadata:
+      labels:
+        app: ai-core
+        component: aic-gpu
+    spec:
+      nodeSelector:
+        accelerator: nvidia-gpu
+      containers:
+        - name: ai-core-gpu
+          image: auralink/ai-core:latest-gpu
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2000m"
+              nvidia.com/gpu: 1
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+              nvidia.com/gpu: 1
+          env:
+            - name: USE_GPU
+              value: "true"
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+---
+# ================================================================
+# Persistent Volume for Models
+# ================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aic-models-pvc
+  namespace: auralink-aic
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+
+---
+# ================================================================
+# Horizontal Pod Autoscaler
+# ================================================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-core-aic-hpa
+  namespace: auralink-aic
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-core-aic
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: inference_latency_ms
+        target:
+          type: AverageValue
+          averageValue: "15"
+
+---
+# ================================================================
+# Service Monitor for Prometheus
+# ================================================================
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-core-aic-monitor
+  namespace: auralink-aic
+spec:
+  selector:
+    matchLabels:
+      app: ai-core
+      component: aic
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+
+---
+# ================================================================
+# Network Policy
+# ================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-core-aic-netpol
+  namespace: auralink-aic
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-core
+      component: aic
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: auralink-webrtc
+      ports:
+        - protocol: TCP
+          port: 50051  # gRPC
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: auralink-dashboard
+      ports:
+        - protocol: TCP
+          port: 8000  # HTTP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: auralink-database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53  # DNS
+        - protocol: UDP
+          port: 53
+
+---
+# ================================================================
+# Pod Disruption Budget
+# ================================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-core-aic-pdb
+  namespace: auralink-aic
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ai-core
+      component: aic
+
+---
+# ================================================================
+# Secrets (Template - Replace with actual values)
+# ================================================================
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-core-secrets
+  namespace: auralink-aic
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://user:password@postgres:5432/auralink"
+  REDIS_URL: "redis://redis:6379/0"
+  SUPABASE_URL: "https://your-project.supabase.co"
+  SUPABASE_SERVICE_ROLE_KEY: "your-service-role-key"
+  OPENAI_API_KEY: "your-openai-key"
+
+---
+# ================================================================
+# Ingress for AI Core APIs
+# ================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-core-aic-ingress
+  namespace: auralink-aic
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  tls:
+    - hosts:
+        - ai.auralink.com
+      secretName: ai-core-tls
+  rules:
+    - host: ai.auralink.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-core-aic
+                port:
+                  number: 8000
+
+---
+# ================================================================
+# gRPC Headless Service for WebRTC Server
+# ================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-core-aic-grpc
+  namespace: auralink-aic
+  labels:
+    app: ai-core
+    component: aic-grpc
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+  selector:
+    app: ai-core
+    component: aic
+
+---
+# ================================================================
+# ConfigMap for Model Configuration
+# ================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aic-model-config
+  namespace: auralink-aic
+data:
+  models.yaml: |
+    models:
+      - name: encodec
+        version: v1.0
+        type: audio
+        path: /app/models/encodec_v1.0
+        enabled: true
+        gpu_required: false
+        
+      - name: encodec_video
+        version: v1.0
+        type: video
+        path: /app/models/encodec_video_v1.0
+        enabled: true
+        gpu_required: true
+        
+      - name: lyra
+        version: v1.0
+        type: audio
+        path: /app/models/lyra_v1.0
+        enabled: false
+        gpu_required: false

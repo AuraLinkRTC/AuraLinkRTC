@@ -1,0 +1,113 @@
+# AuraLink Monorepo - Global .gitignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Secrets
+secrets/
+*.key
+*.pem
+*.crt
+
+# Build outputs
+bin/
+build/
+dist/
+out/
+target/
+
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.Python
+venv/
+env/
+ENV/
+
+# Go specific
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Python specific
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+*.egg
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Kubernetes
+*.kubeconfig
+
+# Monitoring & Metrics
+prometheus_data/
+grafana_data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Service-specific builds
+auralink-dashboard-service/bin/
+auralink-webrtc-server/bin/
+auralink-ai-core/.pytest_cache/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Generated files
+proto/gen/
+*.pb.go
+*_pb2.py

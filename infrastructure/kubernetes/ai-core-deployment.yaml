@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auralink-ai-core
+  namespace: auralink
+  labels:
+    app: auralink-ai-core
+    tier: intelligence
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auralink-ai-core
+  template:
+    metadata:
+      labels:
+        app: auralink-ai-core
+        tier: intelligence
+    spec:
+      containers:
+      - name: ai-core
+        image: auralink/ai-core:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 50051
+          name: grpc
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: ENVIRONMENT
+        - name: AI_CORE_PORT
+          value: "8000"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: REDIS_HOST
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_JWT_SECRET
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: DATABASE_URL
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: OPENAI_API_KEY
+        - name: WEBRTC_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: WEBRTC_SERVER_URL
+        - name: GRPC_PORT
+          value: "50051"
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: ENABLE_GPU
+          value: "true"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: aic-model-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auralink-ai-core
+  namespace: auralink
+  labels:
+    app: auralink-ai-core
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 50051
+    targetPort: 50051
+    protocol: TCP
+    name: grpc
+  selector:
+    app: auralink-ai-core

@@ -1,0 +1,421 @@
+---
+# AuraLink Kong API Gateway Configuration
+# Phase 7: Enterprise API Gateway with rate limiting, authentication, and routing
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auralink-gateway
+  labels:
+    name: auralink-gateway
+    phase: phase7
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-config
+  namespace: auralink-gateway
+data:
+  KONG_DATABASE: "postgres"
+  KONG_PG_HOST: "postgres.auralink-db.svc.cluster.local"
+  KONG_PG_PORT: "5432"
+  KONG_PG_DATABASE: "kong"
+  KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+  KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+  KONG_PROXY_ERROR_LOG: "/dev/stderr"
+  KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+  KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+  KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  namespace: auralink-gateway
+  labels:
+    app: kong-gateway
+    phase: phase7
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kong-gateway
+  template:
+    metadata:
+      labels:
+        app: kong-gateway
+    spec:
+      containers:
+      - name: kong
+        image: kong:3.4
+        env:
+        - name: KONG_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_DATABASE
+        - name: KONG_PG_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_PG_HOST
+        - name: KONG_PG_USER
+          valueFrom:
+            secretKeyRef:
+              name: kong-db-secret
+              key: username
+        - name: KONG_PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kong-db-secret
+              key: password
+        - name: KONG_PROXY_ACCESS_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_PROXY_ACCESS_LOG
+        - name: KONG_ADMIN_ACCESS_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_ADMIN_ACCESS_LOG
+        - name: KONG_PROXY_ERROR_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_PROXY_ERROR_LOG
+        - name: KONG_ADMIN_ERROR_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_ADMIN_ERROR_LOG
+        - name: KONG_ADMIN_LISTEN
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_ADMIN_LISTEN
+        - name: KONG_PROXY_LISTEN
+          valueFrom:
+            configMapKeyRef:
+              name: kong-config
+              key: KONG_PROXY_LISTEN
+        ports:
+        - name: proxy
+          containerPort: 8000
+          protocol: TCP
+        - name: proxy-ssl
+          containerPort: 8443
+          protocol: TCP
+        - name: admin
+          containerPort: 8001
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 20
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-gateway
+  namespace: auralink-gateway
+  labels:
+    app: kong-gateway
+spec:
+  type: LoadBalancer
+  ports:
+  - name: proxy
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: proxy-ssl
+    port: 443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: kong-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-admin
+  namespace: auralink-gateway
+  labels:
+    app: kong-gateway
+spec:
+  type: ClusterIP
+  ports:
+  - name: admin
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  selector:
+    app: kong-gateway
+---
+# Kong Ingress Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kong-ingress-controller
+  namespace: auralink-gateway
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kong-ingress-controller
+rules:
+- apiGroups: [""]
+  resources: ["endpoints", "nodes", "pods", "secrets", "services", "configmaps"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses/status"]
+  verbs: ["update"]
+- apiGroups: ["configuration.konghq.com"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kong-ingress-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kong-ingress-controller
+subjects:
+- kind: ServiceAccount
+  name: kong-ingress-controller
+  namespace: auralink-gateway
+---
+# Kong Routes Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-routes-config
+  namespace: auralink-gateway
+data:
+  routes.yaml: |
+    # Dashboard Service Routes
+    - name: dashboard-api
+      service:
+        name: auralink-dashboard-service
+        port: 8080
+      paths:
+        - /api/v1
+      strip_path: false
+      plugins:
+        - name: rate-limiting
+          config:
+            minute: 100
+            hour: 5000
+            policy: local
+        - name: jwt
+        - name: cors
+          config:
+            origins: ["*"]
+            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+            headers: ["Accept", "Authorization", "Content-Type"]
+            exposed_headers: ["X-Request-ID"]
+            credentials: true
+            max_age: 3600
+    
+    # AI Core Routes
+    - name: ai-core-api
+      service:
+        name: auralink-ai-core
+        port: 8001
+      paths:
+        - /api/v1/agents
+        - /api/v1/memory
+        - /api/v1/speech
+        - /api/v1/translation
+        - /api/v1/aic
+        - /api/v1/mcp
+        - /api/v1/workflows
+      strip_path: false
+      plugins:
+        - name: rate-limiting
+          config:
+            minute: 200
+            hour: 10000
+            policy: redis
+            redis_host: redis.auralink-cache.svc.cluster.local
+            redis_port: 6379
+        - name: jwt
+        - name: request-size-limiting
+          config:
+            allowed_payload_size: 100
+    
+    # WebRTC Server Routes
+    - name: webrtc-api
+      service:
+        name: auralink-webrtc-server
+        port: 7880
+      paths:
+        - /rtc
+      strip_path: false
+      plugins:
+        - name: rate-limiting
+          config:
+            minute: 500
+            hour: 20000
+        - name: jwt
+    
+    # Public Routes (no auth required)
+    - name: public-health
+      service:
+        name: auralink-dashboard-service
+        port: 8080
+      paths:
+        - /health
+        - /readiness
+        - /metrics
+      strip_path: false
+      plugins:
+        - name: rate-limiting
+          config:
+            minute: 1000
+---
+# Rate Limiting Plugin Global Config
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: global-rate-limiting
+  namespace: auralink-gateway
+plugin: rate-limiting
+config:
+  minute: 100
+  hour: 5000
+  policy: redis
+  redis_host: redis.auralink-cache.svc.cluster.local
+  redis_port: 6379
+  fault_tolerant: true
+---
+# JWT Authentication Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: jwt-auth
+  namespace: auralink-gateway
+plugin: jwt
+config:
+  key_claim_name: iss
+  secret_is_base64: false
+  anonymous: null
+---
+# CORS Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors-policy
+  namespace: auralink-gateway
+plugin: cors
+config:
+  origins: ["*"]
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  headers: ["Accept", "Authorization", "Content-Type", "X-Request-ID"]
+  exposed_headers: ["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"]
+  credentials: true
+  max_age: 3600
+---
+# Request Transformer Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: request-transformer
+  namespace: auralink-gateway
+plugin: request-transformer
+config:
+  add:
+    headers:
+      - "X-Gateway-Timestamp: $(date +%s)"
+      - "X-Gateway-Version: 1.0"
+---
+# IP Restriction Plugin (for admin endpoints)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: ip-restriction
+  namespace: auralink-gateway
+plugin: ip-restriction
+config:
+  allow:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+---
+# Response Transformer Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: response-transformer
+  namespace: auralink-gateway
+plugin: response-transformer
+config:
+  add:
+    headers:
+      - "X-Powered-By: AuraLink"
+      - "X-Content-Type-Options: nosniff"
+      - "X-Frame-Options: DENY"
+      - "X-XSS-Protection: 1; mode=block"
+---
+# Prometheus Plugin for Metrics
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: prometheus
+  namespace: auralink-gateway
+plugin: prometheus
+config:
+  per_consumer: true
+---
+# Bot Detection Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: bot-detection
+  namespace: auralink-gateway
+plugin: bot-detection
+config:
+  allow: []
+  deny:
+    - "curl/*"
+    - "wget/*"
+---
+# Request Termination Plugin (for maintenance mode)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: maintenance-mode
+  namespace: auralink-gateway
+plugin: request-termination
+disabled: true
+config:
+  status_code: 503
+  message: "AuraLink is currently undergoing maintenance. Please try again later."

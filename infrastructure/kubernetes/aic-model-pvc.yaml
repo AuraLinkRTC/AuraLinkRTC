@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aic-model-storage
+  namespace: auralink
+  labels:
+    app: auralink-ai-core
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aic-model-config
+  namespace: auralink
+data:
+  model_info.yaml: |
+    # AIC Protocol Model Configuration
+    models:
+      video:
+        type: "VideoCompressionNet"
+        version: "v1.0"
+        latent_dim: 64
+        channels: 3
+        fallback: true
+      audio:
+        type: "AudioCompressionNet"
+        version: "v1.0"
+        sample_rate: 48000
+        fallback: true
+      
+    # Pre-trained model sources
+    pretrained:
+      encodec:
+        enabled: true
+        model: "encodec_24khz"
+        source: "facebook/encodec"
+      
+    # Compression settings
+    compression:
+      default_mode: "adaptive"
+      target_ratio: 0.80
+      min_quality: 0.85
+      max_latency_ms: 20

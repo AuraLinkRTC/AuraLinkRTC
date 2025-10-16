@@ -1,0 +1,161 @@
+# ============================================================================
+# AuraLink MCP Server Configuration
+# Model Context Protocol Integration
+# ============================================================================
+
+# MCP Server Endpoints
+mcp_servers:
+  deepwiki:
+    enabled: true
+    endpoint: "https://api.deepwiki.ai/v1"  # Replace with actual MCP server URL
+    description: "GitHub repository and documentation access"
+    capabilities:
+      - read_wiki
+      - search_docs
+      - ask_question
+    auth_type: "bearer"  # bearer, api_key, oauth
+    timeout: 30
+    retry_attempts: 3
+    fallback_enabled: true
+    
+  memory:
+    enabled: true
+    endpoint: "https://api.memory-mcp.ai/v1"  # Replace with actual MCP server URL
+    description: "Graph-based knowledge management"
+    capabilities:
+      - create_entities
+      - create_relations
+      - search_nodes
+      - read_graph
+      - delete_entities
+    auth_type: "bearer"
+    timeout: 30
+    retry_attempts: 3
+    fallback_enabled: true
+    
+  sequential_thinking:
+    enabled: true
+    endpoint: "https://api.sequential-thinking.ai/v1"  # Replace with actual MCP server URL
+    description: "Step-by-step reasoning for complex problems"
+    capabilities:
+      - think_sequentially
+      - revise_thought
+      - branch_reasoning
+    auth_type: "bearer"
+    timeout: 60
+    retry_attempts: 2
+    fallback_enabled: true
+    
+  supabase:
+    enabled: true
+    endpoint: "https://api.supabase-mcp.ai/v1"  # Replace with actual MCP server URL
+    description: "Live database queries and operations"
+    capabilities:
+      - execute_sql
+      - list_tables
+      - search_docs
+      - apply_migration
+    auth_type: "bearer"
+    timeout: 30
+    retry_attempts: 3
+    fallback_enabled: true
+
+# Global MCP Settings
+mcp_global:
+  # Connection pooling
+  max_connections: 50
+  connection_timeout: 10
+  
+  # Rate limiting
+  rate_limit_enabled: true
+  max_requests_per_minute: 100
+  max_requests_per_user: 50
+  
+  # Caching
+  cache_enabled: true
+  cache_ttl: 300  # seconds
+  
+  # Monitoring
+  metrics_enabled: true
+  log_all_operations: true
+  log_level: "INFO"
+  
+  # Security
+  encrypt_credentials: true
+  validate_ssl: true
+  
+  # Fallback behavior
+  fallback_on_error: true
+  fallback_response_quality: "basic"
+
+# Development vs Production
+environment:
+  # Use 'development' for local testing with fallback mode
+  # Use 'production' for live MCP server connections
+  mode: "development"  # development | production
+  
+  # Development settings
+  development:
+    use_mock_servers: false
+    fallback_always: false
+    verbose_logging: true
+    
+  # Production settings  
+  production:
+    require_ssl: true
+    strict_auth: true
+    circuit_breaker_enabled: true
+    health_check_interval: 60
+
+# Circuit Breaker Settings
+circuit_breaker:
+  failure_threshold: 5
+  success_threshold: 2
+  timeout: 30
+  half_open_timeout: 10
+
+# User Connection Defaults
+user_connection_defaults:
+  auto_connect: false
+  connection_ttl: 86400  # 24 hours
+  auto_refresh: true
+  max_connections_per_user: 10
+
+# BYOK (Bring Your Own Key) Settings
+byok:
+  enabled: true
+  encryption_key: "${MCP_ENCRYPTION_KEY}"  # Use environment variable
+  allow_custom_endpoints: true
+  validate_endpoints: true
+  
+# Analytics & Usage Tracking
+analytics:
+  track_usage: true
+  track_latency: true
+  track_errors: true
+  track_costs: true
+  retention_days: 90
+
+# Cost Management
+cost_management:
+  track_token_usage: true
+  alert_on_high_usage: true
+  daily_budget_limit: null  # Set per organization
+  monthly_budget_limit: null
+
+# ============================================================================
+# MCP Server URLs (Placeholder - Update with actual endpoints)
+# ============================================================================
+# 
+# For production deployment:
+# 1. Deploy MCP servers or use hosted MCP services
+# 2. Update endpoint URLs above
+# 3. Configure authentication credentials in environment variables
+# 4. Test connections using the MCP health check endpoints
+#
+# Example environment variables:
+# DEEPWIKI_MCP_API_KEY=your_api_key_here
+# MEMORY_MCP_API_KEY=your_api_key_here
+# SEQUENTIAL_THINKING_MCP_API_KEY=your_api_key_here
+# SUPABASE_MCP_API_KEY=your_api_key_here
+# ============================================================================

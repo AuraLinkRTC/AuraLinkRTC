@@ -1,0 +1,368 @@
+---
+# AuraLink Argo Workflows Configuration
+# Phase 7: Kubernetes-native AI batch processing workflows
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auralink-workflows
+  labels:
+    name: auralink-workflows
+    phase: phase7
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: ai-batch-processing
+  namespace: auralink-workflows
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+    - name: organization-id
+      value: ""
+    - name: processing-type
+      value: "transcription"
+    - name: batch-size
+      value: "10"
+  
+  templates:
+  - name: main
+    steps:
+    - - name: fetch-tasks
+        template: fetch-pending-tasks
+    - - name: process-batch
+        template: parallel-processing
+        arguments:
+          parameters:
+          - name: task-list
+            value: "{{steps.fetch-tasks.outputs.result}}"
+    - - name: update-results
+        template: update-database
+  
+  - name: fetch-pending-tasks
+    container:
+      image: postgres:15-alpine
+      command: [sh, -c]
+      args:
+        - |
+          echo "Fetching pending AI tasks..."
+          # Mock task IDs for processing
+          echo '["task1", "task2", "task3"]'
+      env:
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: auralink-db-secret
+            key: url
+  
+  - name: parallel-processing
+    inputs:
+      parameters:
+      - name: task-list
+    parallelism: 5
+    withItems:
+    - task1
+    - task2
+    - task3
+    steps:
+    - - name: process-task
+        template: ai-processing-task
+        arguments:
+          parameters:
+          - name: task-id
+            value: "{{item}}"
+  
+  - name: ai-processing-task
+    inputs:
+      parameters:
+      - name: task-id
+    container:
+      image: python:3.11-slim
+      command: [python, -c]
+      args:
+        - |
+          import json
+          import time
+          task_id = "{{inputs.parameters.task-id}}"
+          print(f"Processing AI task: {task_id}")
+          time.sleep(5)  # Simulate AI processing
+          print(f"✓ Task {task_id} completed")
+      resources:
+        requests:
+          memory: 2Gi
+          cpu: 1000m
+        limits:
+          memory: 4Gi
+          cpu: 2000m
+  
+  - name: update-database
+    container:
+      image: postgres:15-alpine
+      command: [sh, -c]
+      args:
+        - |
+          echo "Updating processing results in database..."
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: transcription-workflow
+  namespace: auralink-workflows
+spec:
+  entrypoint: transcribe-recordings
+  arguments:
+    parameters:
+    - name: recording-urls
+      value: "[]"
+    - name: language
+      value: "en"
+  
+  templates:
+  - name: transcribe-recordings
+    inputs:
+      parameters:
+      - name: recording-urls
+    steps:
+    - - name: download-recording
+        template: download-audio
+        arguments:
+          parameters:
+          - name: url
+            value: "{{item}}"
+        withParam: "{{inputs.parameters.recording-urls}}"
+    - - name: transcribe
+        template: run-whisper
+        arguments:
+          artifacts:
+          - name: audio-file
+            from: "{{steps.download-recording.outputs.artifacts.audio}}"
+    - - name: store-result
+        template: save-transcription
+        arguments:
+          parameters:
+          - name: transcription-text
+            value: "{{steps.transcribe.outputs.result}}"
+  
+  - name: download-audio
+    inputs:
+      parameters:
+      - name: url
+    container:
+      image: curlimages/curl:latest
+      command: [sh, -c]
+      args:
+        - |
+          curl -o /tmp/audio.mp3 "{{inputs.parameters.url}}"
+    outputs:
+      artifacts:
+      - name: audio
+        path: /tmp/audio.mp3
+  
+  - name: run-whisper
+    inputs:
+      artifacts:
+      - name: audio-file
+        path: /tmp/audio.mp3
+    container:
+      image: python:3.11-slim
+      command: [python, -c]
+      args:
+        - |
+          print("Running Whisper transcription...")
+          # TODO: Call actual Whisper model
+          transcription = "This is a transcription of the audio file."
+          print(transcription)
+      resources:
+        requests:
+          memory: 4Gi
+          cpu: 2000m
+        limits:
+          memory: 8Gi
+          cpu: 4000m
+  
+  - name: save-transcription
+    inputs:
+      parameters:
+      - name: transcription-text
+    container:
+      image: postgres:15-alpine
+      command: [sh, -c]
+      args:
+        - |
+          echo "Saving transcription to database..."
+          echo "{{inputs.parameters.transcription-text}}"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: ai-summarization-workflow
+  namespace: auralink-workflows
+spec:
+  entrypoint: summarize-calls
+  arguments:
+    parameters:
+    - name: call-ids
+      value: "[]"
+    - name: model
+      value: "gpt-4"
+  
+  templates:
+  - name: summarize-calls
+    inputs:
+      parameters:
+      - name: call-ids
+    steps:
+    - - name: fetch-transcription
+        template: get-call-data
+        arguments:
+          parameters:
+          - name: call-id
+            value: "{{item}}"
+        withParam: "{{inputs.parameters.call-ids}}"
+    - - name: generate-summary
+        template: run-summarization
+        arguments:
+          parameters:
+          - name: call-id
+            value: "{{item}}"
+          - name: transcription
+            value: "{{steps.fetch-transcription.outputs.result}}"
+        withParam: "{{inputs.parameters.call-ids}}"
+    - - name: save-summary
+        template: store-summary
+        arguments:
+          parameters:
+          - name: call-id
+            value: "{{item}}"
+          - name: summary
+            value: "{{steps.generate-summary.outputs.result}}"
+        withParam: "{{inputs.parameters.call-ids}}"
+  
+  - name: get-call-data
+    inputs:
+      parameters:
+      - name: call-id
+    container:
+      image: postgres:15-alpine
+      command: [sh, -c]
+      args:
+        - |
+          echo "Fetching transcription for call {{inputs.parameters.call-id}}..."
+          # Mock transcription
+          echo "This is the call transcription text."
+  
+  - name: run-summarization
+    inputs:
+      parameters:
+      - name: call-id
+      - name: transcription
+    container:
+      image: python:3.11-slim
+      command: [python, -c]
+      args:
+        - |
+          import json
+          call_id = "{{inputs.parameters.call-id}}"
+          transcription = "{{inputs.parameters.transcription}}"
+          print(f"Generating summary for call {call_id}...")
+          # TODO: Call OpenAI API
+          summary = f"Summary: Key points from call {call_id}"
+          print(summary)
+      resources:
+        requests:
+          memory: 1Gi
+          cpu: 500m
+        limits:
+          memory: 2Gi
+          cpu: 1000m
+  
+  - name: store-summary
+    inputs:
+      parameters:
+      - name: call-id
+      - name: summary
+    container:
+      image: postgres:15-alpine
+      command: [sh, -c]
+      args:
+        - |
+          echo "Storing summary for call {{inputs.parameters.call-id}}..."
+---
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nightly-ai-processing
+  namespace: auralink-workflows
+spec:
+  schedule: "0 2 * * *"  # Run at 2 AM daily
+  timezone: "UTC"
+  concurrencyPolicy: "Forbid"
+  workflowSpec:
+    entrypoint: nightly-batch
+    templates:
+    - name: nightly-batch
+      steps:
+      - - name: process-transcriptions
+          templateRef:
+            name: transcription-workflow
+            template: transcribe-recordings
+          arguments:
+            parameters:
+            - name: recording-urls
+              value: "[]"
+      - - name: generate-summaries
+          templateRef:
+            name: ai-summarization-workflow
+            template: summarize-calls
+          arguments:
+            parameters:
+            - name: call-ids
+              value: "[]"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow
+  namespace: auralink-workflows
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-workflow-role
+  namespace: auralink-workflows
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "watch", "patch", "list"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+- apiGroups: ["argoproj.io"]
+  resources: ["workflows", "workflowtemplates", "cronworkflows", "clusterworkflowtemplates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-workflow-binding
+  namespace: auralink-workflows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-workflow-role
+subjects:
+- kind: ServiceAccount
+  name: argo-workflow
+  namespace: auralink-workflows
+---
+# Workflow Event Tracking ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-config
+  namespace: auralink-workflows
+data:
+  database_url: "postgresql://auralink:password@postgres.auralink-db.svc.cluster.local:5432/auralink"
+  ai_core_url: "http://auralink-ai-core.default.svc.cluster.local:8001"
+  max_parallel_workflows: "10"
+  workflow_timeout: "2h"

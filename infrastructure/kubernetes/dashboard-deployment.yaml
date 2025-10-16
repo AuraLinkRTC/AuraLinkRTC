@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auralink-dashboard-service
+  namespace: auralink
+  labels:
+    app: auralink-dashboard-service
+    tier: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: auralink-dashboard-service
+  template:
+    metadata:
+      labels:
+        app: auralink-dashboard-service
+        tier: api
+    spec:
+      containers:
+      - name: dashboard-service
+        image: auralink/dashboard-service:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: ENVIRONMENT
+        - name: DASHBOARD_SERVICE_PORT
+          value: "8080"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: REDIS_HOST
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_ANON_KEY
+        - name: SUPABASE_SERVICE_ROLE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_SERVICE_ROLE_KEY
+        - name: SUPABASE_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_JWT_SECRET
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: DATABASE_URL
+        - name: WEBRTC_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: WEBRTC_SERVER_URL
+        - name: AI_CORE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: AI_CORE_URL
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auralink-dashboard-service
+  namespace: auralink
+  labels:
+    app: auralink-dashboard-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: auralink-dashboard-service

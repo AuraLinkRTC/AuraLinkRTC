@@ -1,0 +1,103 @@
+# AuraLink AI Core Dependencies
+
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Authentication
+pyjwt==2.8.0
+cryptography==41.0.7
+
+# Database
+asyncpg==0.29.0
+sqlalchemy==2.0.25
+alembic==1.13.1
+
+# Redis
+redis==5.0.1
+hiredis==2.3.2
+
+# HTTP clients
+httpx==0.26.0
+aiohttp==3.9.1
+
+# AI/ML
+openai==1.10.0
+anthropic==0.8.1
+numpy==1.26.3
+
+# Neural Compression Models
+torch==2.1.2
+torchaudio==2.1.2
+encodec==0.1.1  # Meta's EnCodec neural audio codec
+onnxruntime==1.16.3  # ONNX runtime for model inference
+onnxruntime-gpu==1.16.3  # GPU support for ONNX
+scipy==1.11.4  # For signal processing
+librosa==0.10.1  # Audio processing
+opencv-python==4.9.0.80  # Video processing
+Pillow==10.2.0  # Image processing
+scikit-image==0.22.0  # Image quality metrics (SSIM, PSNR)
+
+# Speech Processing (Phase 4)
+elevenlabs==0.2.26
+
+# Workflow Orchestration (Phase 4)
+temporalio==1.5.1
+
+# Phase 5: MCP Integration & AI Agents
+# AI Agent Frameworks
+langgraph==0.0.28
+langchain==0.1.20
+langchain-openai==0.1.6
+langchain-anthropic==0.1.11
+langchain-community==0.0.38
+crewai==0.28.8
+pyautogen==0.2.18
+
+# MCP Server Integration
+mcp==0.9.0
+
+# Dynamic Workflow Orchestration
+prefect==2.16.4
+
+# Multi-Agent Tools
+faiss-cpu==1.7.4  # Vector similarity for agent memory
+tiktoken==0.6.0  # Token counting for LLM management
+
+# gRPC for AIC Protocol
+grpcio==1.60.0
+grpcio-tools==1.60.0
+protobuf==4.25.2
+
+# Monitoring
+prometheus-client==0.19.0
+psutil==5.9.7
+
+# Configuration
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Utilities
+python-multipart==0.0.6
+
+# Storage (Supabase)
+supabase==2.3.4
+postgrest-py==0.13.2
+storage3==0.7.4
+
+# Cloud Providers
+boto3==1.34.34  # AWS SDK (for Polly, S3, etc.)
+google-cloud-speech==2.24.1  # Google Cloud Speech-to-Text
+google-cloud-texttospeech==2.16.3  # Google Cloud Text-to-Speech
+azure-cognitiveservices-speech==1.35.0  # Azure Speech Services
+
+# Audio Processing & Noise Cancellation
+soundfile==0.12.1  # Audio file I/O
+noisereduce==3.0.0  # Noise reduction
+resampy==0.4.2  # Audio resampling
+
+# Additional utilities
+python-jose[cryptography]==3.3.0  # JWT handling
+aiobotocore==2.11.2  # Async boto3

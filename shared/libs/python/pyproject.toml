@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auralink-shared"
+version = "1.0.0"
+description = "Shared libraries for AuraLink Python services"
+authors = [
+    {name = "AuraLinkRTC", email = "dev@auralink.com"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "pyjwt>=2.8.0",
+    "cryptography>=41.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.0.0",
+    "mypy>=1.5.0",
+    "ruff>=0.0.290",
+]

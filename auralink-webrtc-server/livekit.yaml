@@ -1,0 +1,80 @@
+node:
+  region: local
+  port: 7880
+  join_host: http://localhost:7880
+
+redis:
+  address: localhost:6379
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  use_external_ip: true
+
+keys:
+  devkey: devsecret
+
+logging:
+  level: info
+
+# AuraLink AIC Protocol Configuration (Phase 3 - Foundation Setup)
+# AIC = AI-driven Compression Protocol for WebRTC
+aic_protocol:
+  # Enable/Disable AIC Protocol (default: false for Phase 1)
+  enabled: false
+  
+  # AI Core service endpoint for compression hints
+  ai_core_endpoint: "http://ai-core-service:8000"
+  
+  # Compression settings
+  compression:
+    # Target bandwidth reduction percentage (1-99)
+    target_reduction_percent: 80
+    
+    # Minimum quality threshold (0-100)
+    min_quality_threshold: 70
+    
+    # Maximum latency added by compression (milliseconds)
+    max_latency_ms: 50
+    
+  # Adaptive compression based on network conditions
+  adaptive:
+    enabled: true
+    
+    # Network conditions thresholds
+    thresholds:
+      high_latency_ms: 150
+      packet_loss_percent: 5.0
+      low_bandwidth_kbps: 500
+    
+    # Fallback to standard codec if AIC fails
+    fallback_enabled: true
+    fallback_timeout_ms: 100
+  
+  # RTP extension for AIC metadata
+  rtp_extension:
+    enabled: true
+    extension_id: 15  # Custom RTP extension ID
+    
+  # Performance monitoring
+  monitoring:
+    enabled: true
+    metrics_interval_seconds: 10
+    
+    # Track these metrics
+    track_compression_ratio: true
+    track_latency: true
+    track_quality_score: true
+    track_bandwidth_savings: true
+  
+  # A/B testing configuration
+  ab_testing:
+    enabled: false
+    percentage: 0  # Percentage of calls to use AIC (0-100)
+    
+  # Cache for AI compression hints
+  cache:
+    enabled: true
+    ttl_seconds: 300
+    max_size_mb: 100

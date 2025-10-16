@@ -1,0 +1,265 @@
+# ================================================================
+# AuraLink AIC Protocol - Configuration
+# ================================================================
+# Purpose: Configuration for AIC Protocol across all services
+# Version: 1.0.0
+# ================================================================
+
+# ================================================================
+# Global AIC Settings
+# ================================================================
+aic:
+  enabled: true
+  version: "1.0.0"
+  protocol_version: "1"
+  
+  # Feature Flags
+  features:
+    neural_compression: true
+    predictive_compression: true
+    perceptual_optimization: true
+    network_adaptation: true
+    quality_monitoring: true
+    fallback_mechanism: true
+
+# ================================================================
+# AI Core Configuration
+# ================================================================
+ai_core:
+  # Server Settings
+  http_port: 8000
+  grpc_port: 50051
+  workers: 4
+  
+  # Model Configuration
+  models:
+    default_model: "encodec"
+    available_models:
+      - name: "encodec"
+        version: "v1.0"
+        type: "audio_video"
+        enabled: true
+        gpu_required: false
+        
+      - name: "lyra"
+        version: "v1.0"
+        type: "audio"
+        enabled: false
+        gpu_required: false
+        
+      - name: "maxine"
+        version: "v1.0"
+        type: "video"
+        enabled: false
+        gpu_required: true
+  
+  # Compression Settings
+  compression:
+    default_mode: "adaptive"
+    target_ratio: 0.80
+    max_inference_latency_ms: 20
+    min_quality_threshold: 0.85
+    
+    # Mode-specific settings
+    modes:
+      conservative:
+        compression_ratio: 0.50
+        quality_threshold: 0.95
+        max_latency_ms: 15
+        
+      adaptive:
+        compression_ratio: 0.80
+        quality_threshold: 0.85
+        max_latency_ms: 20
+        
+      aggressive:
+        compression_ratio: 0.90
+        quality_threshold: 0.70
+        max_latency_ms: 25
+  
+  # Resource Limits
+  resources:
+    max_concurrent_sessions: 1000
+    max_queue_size: 500
+    timeout_seconds: 30
+    memory_limit_mb: 4096
+    
+  # GPU Settings (if available)
+  gpu:
+    enabled: false
+    device_id: 0
+    memory_fraction: 0.8
+
+# ================================================================
+# WebRTC Server Configuration
+# ================================================================
+webrtc_server:
+  # AIC Integration
+  aic_integration:
+    enabled: true
+    grpc_endpoint: "ai-core-aic-grpc:50051"
+    connection_timeout_ms: 5000
+    request_timeout_ms: 30
+    retry_attempts: 3
+    retry_delay_ms: 100
+    
+  # RTP Extension
+  rtp_extension:
+    aic_metadata_id: 15  # Custom extension ID
+    max_metadata_size: 256
+    
+  # Processing Pipeline
+  pipeline:
+    enable_per_track_processing: true
+    buffer_size_frames: 10
+    max_processing_latency_ms: 50
+
+# ================================================================
+# Dashboard Service Configuration
+# ================================================================
+dashboard:
+  # AIC API Settings
+  aic_api:
+    enabled: true
+    base_path: "/api/v1/aic"
+    rate_limit_per_minute: 100
+    
+  # Analytics
+  analytics:
+    retention_days: 90
+    aggregation_interval_minutes: 5
+    export_enabled: true
+
+# ================================================================
+# Database Configuration
+# ================================================================
+database:
+  # AIC Tables
+  aic_tables:
+    metrics_partition_enabled: true
+    metrics_retention_days: 30
+    session_cleanup_hours: 24
+    
+  # Performance
+  connection_pool:
+    min_connections: 10
+    max_connections: 50
+    max_lifetime_minutes: 60
+
+# ================================================================
+# Monitoring & Observability
+# ================================================================
+monitoring:
+  # Metrics
+  metrics:
+    enabled: true
+    export_interval_seconds: 15
+    custom_metrics:
+      - compression_ratio
+      - inference_latency
+      - quality_score
+      - fallback_rate
+      - bandwidth_savings
+      
+  # Alerting
+  alerts:
+    enabled: true
+    thresholds:
+      high_latency_ms: 30
+      low_quality_score: 0.80
+      high_fallback_rate_percent: 5.0
+      gpu_memory_percent: 90
+      
+  # Logging
+  logging:
+    level: "info"  # debug, info, warning, error
+    format: "json"
+    include_trace_id: true
+
+# ================================================================
+# Security & Privacy
+# ================================================================
+security:
+  # Encryption
+  encryption:
+    grpc_tls_enabled: true
+    cert_path: "/certs/server.crt"
+    key_path: "/certs/server.key"
+    
+  # Privacy
+  privacy:
+    data_retention_policy: "zero"
+    frame_logging_enabled: false
+    anonymize_metrics: true
+    gdpr_compliant: true
+    hipaa_compliant: true
+    
+  # Access Control
+  access_control:
+    require_authentication: true
+    api_key_required: false
+    rate_limiting_enabled: true
+
+# ================================================================
+# Performance Tuning
+# ================================================================
+performance:
+  # Caching
+  cache:
+    enabled: true
+    ttl_seconds: 300
+    max_size_mb: 512
+    
+  # Batching
+  batching:
+    enabled: false
+    max_batch_size: 10
+    max_wait_ms: 50
+    
+  # Prefetching
+  prefetching:
+    enabled: true
+    lookahead_frames: 5
+
+# ================================================================
+# Development Settings
+# ================================================================
+development:
+  debug_mode: false
+  mock_inference: false
+  profile_enabled: false
+  trace_enabled: false
+
+# ================================================================
+# Environment-Specific Overrides
+# ================================================================
+environments:
+  production:
+    ai_core:
+      workers: 8
+      resources:
+        max_concurrent_sessions: 5000
+    monitoring:
+      logging:
+        level: "warning"
+        
+  staging:
+    ai_core:
+      workers: 4
+      resources:
+        max_concurrent_sessions: 1000
+    monitoring:
+      logging:
+        level: "info"
+        
+  development:
+    ai_core:
+      workers: 2
+      resources:
+        max_concurrent_sessions: 100
+    development:
+      debug_mode: true
+      mock_inference: true
+    monitoring:
+      logging:
+        level: "debug"

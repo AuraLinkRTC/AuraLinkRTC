@@ -1,0 +1,304 @@
+---
+# Istio Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    name: istio-system
+---
+# AuraLink Namespace with Istio Injection
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auralink
+  labels:
+    istio-injection: enabled
+---
+# Gateway for external traffic
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: auralink-gateway
+  namespace: auralink
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*.auralink.io"
+    - "api.auralink.io"
+    - "dashboard.auralink.io"
+    tls:
+      mode: SIMPLE
+      credentialName: auralink-tls-cert
+---
+# Virtual Service for Dashboard Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: dashboard-service
+  namespace: auralink
+spec:
+  hosts:
+  - "api.auralink.io"
+  - "dashboard-service"
+  gateways:
+  - auralink-gateway
+  - mesh
+  http:
+  - match:
+    - uri:
+        prefix: "/api/v1"
+    route:
+    - destination:
+        host: dashboard-service
+        port:
+          number: 8080
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: "5xx,reset,connect-failure,refused-stream"
+---
+# Virtual Service for AI Core Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ai-core-service
+  namespace: auralink
+spec:
+  hosts:
+  - "ai-core-service"
+  gateways:
+  - mesh
+  http:
+  - route:
+    - destination:
+        host: ai-core-service
+        port:
+          number: 8000
+    timeout: 60s
+    retries:
+      attempts: 2
+      perTryTimeout: 30s
+      retryOn: "5xx,reset,connect-failure"
+---
+# Virtual Service for WebRTC Server
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: webrtc-server
+  namespace: auralink
+spec:
+  hosts:
+  - "webrtc.auralink.io"
+  - "webrtc-server"
+  gateways:
+  - auralink-gateway
+  - mesh
+  http:
+  - route:
+    - destination:
+        host: webrtc-server
+        port:
+          number: 7880
+    timeout: 30s
+---
+# Destination Rule for Dashboard Service (Circuit Breaking)
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: dashboard-service
+  namespace: auralink
+spec:
+  host: dashboard-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+    loadBalancer:
+      simple: LEAST_REQUEST
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+---
+# Destination Rule for AI Core Service (Circuit Breaking)
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ai-core-service
+  namespace: auralink
+spec:
+  host: ai-core-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+      http:
+        http1MaxPendingRequests: 25
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 2
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 50
+    loadBalancer:
+      simple: ROUND_ROBIN
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+---
+# Destination Rule for WebRTC Server
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: webrtc-server
+  namespace: auralink
+spec:
+  host: webrtc-server
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 200
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+    loadBalancer:
+      simple: LEAST_CONN
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+---
+# PeerAuthentication for mTLS
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: auralink
+spec:
+  mtls:
+    mode: STRICT
+---
+# AuthorizationPolicy for Dashboard Service
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: dashboard-service-authz
+  namespace: auralink
+spec:
+  selector:
+    matchLabels:
+      app: dashboard-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/auralink/sa/*"]
+    - source:
+        namespaces: ["istio-system"]
+  - to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE"]
+        paths: ["/api/v1/*", "/health", "/metrics"]
+---
+# AuthorizationPolicy for AI Core Service
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-core-service-authz
+  namespace: auralink
+spec:
+  selector:
+    matchLabels:
+      app: ai-core-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/auralink/sa/dashboard-service"]
+  - to:
+    - operation:
+        methods: ["POST", "GET"]
+        paths: ["/api/v1/*", "/health", "/metrics"]
+---
+# ServiceEntry for external services (PostgreSQL/Supabase)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: supabase-external
+  namespace: auralink
+spec:
+  hosts:
+  - "*.supabase.co"
+  location: MESH_EXTERNAL
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  - number: 5432
+    name: postgres
+    protocol: TCP
+  resolution: DNS
+---
+# ServiceEntry for Redis external
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: redis-external
+  namespace: auralink
+spec:
+  hosts:
+  - "redis.auralink.io"
+  location: MESH_EXTERNAL
+  ports:
+  - number: 6379
+    name: redis
+    protocol: TCP
+  resolution: DNS
+---
+# Telemetry configuration for distributed tracing
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mesh-tracing
+  namespace: auralink
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 10.0
+    customTags:
+      environment:
+        literal:
+          value: "production"
+      service_version:
+        literal:
+          value: "1.0.0"

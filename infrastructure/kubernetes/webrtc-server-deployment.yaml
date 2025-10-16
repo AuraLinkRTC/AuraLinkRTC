@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auralink-webrtc-server
+  namespace: auralink
+  labels:
+    app: auralink-webrtc-server
+    tier: media
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auralink-webrtc-server
+  template:
+    metadata:
+      labels:
+        app: auralink-webrtc-server
+        tier: media
+    spec:
+      containers:
+      - name: webrtc-server
+        image: auralink/webrtc-server:latest
+        ports:
+        - containerPort: 7880
+          name: http
+          protocol: TCP
+        - containerPort: 7881
+          name: rtc-tcp
+          protocol: TCP
+        - containerPort: 50000
+          name: rtc-udp
+          protocol: UDP
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: ENVIRONMENT
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: REDIS_HOST
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: SUPABASE_JWT_SECRET
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: DATABASE_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 7880
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 7880
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auralink-webrtc-server
+  namespace: auralink
+  labels:
+    app: auralink-webrtc-server
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 7880
+    targetPort: 7880
+    protocol: TCP
+    name: http
+  - port: 7881
+    targetPort: 7881
+    protocol: TCP
+    name: rtc-tcp
+  - port: 50000
+    targetPort: 50000
+    protocol: UDP
+    name: rtc-udp
+  selector:
+    app: auralink-webrtc-server
