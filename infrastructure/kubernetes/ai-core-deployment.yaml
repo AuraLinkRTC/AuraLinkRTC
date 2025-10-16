@@ -82,18 +82,35 @@ spec:
         volumeMounts:
         - name: model-storage
           mountPath: /app/models
+        # Liveness probe - restart container if hung or deadlocked
         livenessProbe:
           httpGet:
-            path: /health
+            path: /liveness
             port: 8000
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Readiness probe - don't route traffic until services initialized
         readinessProbe:
           httpGet:
             path: /readiness
             port: 8000
-          initialDelaySeconds: 15
-          periodSeconds: 5
+          initialDelaySeconds: 60  # Allow time for service initialization
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Startup probe - allow long startup time for model loading
+        startupProbe:
+          httpGet:
+            path: /readiness
+            port: 8000
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30  # Allow up to 5 minutes for startup (30 * 10s)
       volumes:
       - name: model-storage
         persistentVolumeClaim:

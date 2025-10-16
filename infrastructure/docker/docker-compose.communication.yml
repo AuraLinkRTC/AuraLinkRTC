@@ -1,0 +1,163 @@
+version: '3.8'
+
+# AuraLink Communication Service Stack
+# Includes Matrix Synapse, PostgreSQL, and Redis
+
+networks:
+  auralink-network:
+    driver: bridge
+
+volumes:
+  synapse-data:
+    driver: local
+  postgres-comm-data:
+    driver: local
+  redis-comm-data:
+    driver: local
+
+services:
+  # PostgreSQL Database for Communication Service
+  postgres-comm:
+    image: postgres:15-alpine
+    container_name: auralink-postgres-comm
+    networks:
+      - auralink-network
+    environment:
+      POSTGRES_USER: ${COMM_POSTGRES_USER:-auralink}
+      POSTGRES_PASSWORD: ${COMM_POSTGRES_PASSWORD:-auralink_comm_pass}
+      POSTGRES_DB: ${COMM_POSTGRES_DB:-auralink_comm}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres-comm-data:/var/lib/postgresql/data
+      - ../../scripts/db/migrations/006_phase6_auraid_mesh_schema.sql:/docker-entrypoint-initdb.d/006_phase6.sql:ro
+      - ../../scripts/db/migrations/008_communication_service_schema.sql:/docker-entrypoint-initdb.d/008_comm_service.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${COMM_POSTGRES_USER:-auralink}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for Matrix presence and caching
+  redis-comm:
+    image: redis:7-alpine
+    container_name: auralink-redis-comm
+    networks:
+      - auralink-network
+    command: redis-server --appendonly yes --requirepass ${COMM_REDIS_PASSWORD:-auralink_redis_pass}
+    volumes:
+      - redis-comm-data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Matrix Synapse (Communication Service Core)
+  communication-service:
+    build:
+      context: ../../auralink-communication-service
+      dockerfile: Dockerfile
+    container_name: auralink-communication-service
+    networks:
+      - auralink-network
+    depends_on:
+      postgres-comm:
+        condition: service_healthy
+      redis-comm:
+        condition: service_healthy
+    environment:
+      # Server configuration
+      SYNAPSE_SERVER_NAME: ${SYNAPSE_SERVER_NAME:-auralink.network}
+      SYNAPSE_REPORT_STATS: "no"
+      SYNAPSE_CONFIG_DIR: /data
+      
+      # Database configuration
+      POSTGRES_HOST: postgres-comm
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${COMM_POSTGRES_USER:-auralink}
+      POSTGRES_PASSWORD: ${COMM_POSTGRES_PASSWORD:-auralink_comm_pass}
+      POSTGRES_DB: ${COMM_POSTGRES_DB:-auralink_comm}
+      
+      # Redis configuration
+      REDIS_HOST: redis-comm
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${COMM_REDIS_PASSWORD:-auralink_redis_pass}
+      
+      # Matrix configuration
+      ENABLE_REGISTRATION: "false"
+      MATRIX_REGISTRATION_SECRET: ${MATRIX_REGISTRATION_SECRET:-change_this_secret}
+      
+      # AuraLink integration
+      DASHBOARD_SERVICE_URL: ${DASHBOARD_SERVICE_URL:-http://dashboard-service:8080}
+      AI_CORE_URL: ${AI_CORE_URL:-http://ai-core:8000}
+      WEBRTC_SERVER_URL: ${WEBRTC_SERVER_URL:-http://webrtc-server:7880}
+      
+      # Feature flags
+      ENABLE_FEDERATION: ${ENABLE_FEDERATION:-true}
+      ENABLE_MESH_ROUTING: ${ENABLE_MESH_ROUTING:-true}
+      ENABLE_AURAID: ${ENABLE_AURAID:-true}
+    volumes:
+      - synapse-data:/data
+    ports:
+      - "8008:8008"   # Matrix HTTP
+      - "8448:8448"   # Matrix Federation
+      - "9001:9000"   # Prometheus metrics
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy for TLS termination (optional, for production)
+  nginx-comm:
+    image: nginx:alpine
+    container_name: auralink-nginx-comm
+    networks:
+      - auralink-network
+    depends_on:
+      - communication-service
+    volumes:
+      - ./nginx-comm.conf:/etc/nginx/nginx.conf:ro
+      # Mount TLS certificates in production
+      # - /path/to/certs:/etc/nginx/certs:ro
+    ports:
+      - "8443:443"
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Mesh Routing Engine (will be implemented in Phase 4)
+  mesh-routing-engine:
+    build:
+      context: ../../auralink-communication-service/mesh
+      dockerfile: Dockerfile
+    container_name: auralink-mesh-routing
+    networks:
+      - auralink-network
+    depends_on:
+      - communication-service
+      - redis-comm
+    environment:
+      AI_CORE_URL: ${AI_CORE_URL:-http://ai-core:8000}
+      REDIS_URL: redis://redis-comm:6379
+      REDIS_PASSWORD: ${COMM_REDIS_PASSWORD:-auralink_redis_pass}
+      DATABASE_URL: postgresql://${COMM_POSTGRES_USER:-auralink}:${COMM_POSTGRES_PASSWORD:-auralink_comm_pass}@postgres-comm:5432/${COMM_POSTGRES_DB:-auralink_comm}
+    ports:
+      - "9002:9000"
+    restart: unless-stopped
+    profiles:
+      - mesh
+      - production

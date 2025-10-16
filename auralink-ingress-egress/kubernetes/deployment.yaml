@@ -1,0 +1,239 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auralink-ingress-egress
+  namespace: auralink
+  labels:
+    app: ingress-egress
+    component: media
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ingress-egress
+  template:
+    metadata:
+      labels:
+        app: ingress-egress
+        component: media
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: auralink-ingress-egress
+      
+      # Init container to wait for dependencies
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          until nc -z postgres 5432; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready"
+      
+      - name: wait-for-redis
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          until nc -z redis 6379; do
+            echo "Waiting for Redis..."
+            sleep 2
+          done
+          echo "Redis is ready"
+      
+      containers:
+      - name: ingress-egress
+        image: auralink/ingress-egress:latest
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: rtp
+          containerPort: 10000
+          protocol: UDP
+        
+        env:
+        # Service identity
+        - name: BRIDGE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        
+        - name: AURALINK_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: auralink-config
+              key: region
+        
+        - name: AURALINK_ENV
+          value: "production"
+        
+        # Feature flags
+        - name: ENABLE_AIC
+          value: "true"
+        - name: ENABLE_SIP
+          value: "true"
+        - name: ENABLE_RTMP
+          value: "true"
+        - name: ENABLE_RECORDING
+          value: "true"
+        - name: ENABLE_MESH
+          value: "false"
+        - name: ENABLE_AURAID
+          value: "true"
+        
+        # Database configuration
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: database-url
+        
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: database-user
+        
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: database-password
+        
+        - name: DB_POOL_SIZE
+          value: "20"
+        
+        # Redis configuration
+        - name: REDIS_HOST
+          value: "redis"
+        
+        - name: REDIS_PORT
+          value: "6379"
+        
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: redis-password
+        
+        # Dashboard Service
+        - name: DASHBOARD_SERVICE_URL
+          value: "http://auralink-dashboard:8080"
+        
+        - name: DASHBOARD_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: dashboard-api-key
+        
+        # AI Core
+        - name: AI_CORE_GRPC_URL
+          value: "auralink-ai-core:50051"
+        
+        # WebRTC Server
+        - name: WEBRTC_SERVER_URL
+          value: "http://auralink-webrtc:7880"
+        
+        - name: WEBRTC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: webrtc-api-key
+        
+        # Security
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auralink-secrets
+              key: jwt-secret
+        
+        # Logging
+        - name: LOG_LEVEL
+          value: "INFO"
+        
+        - name: LOG_FORMAT
+          value: "json"
+        
+        # JVM options
+        - name: JAVA_OPTS
+          value: "-Xms1g -Xmx2g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxGCPauseMillis=200"
+        
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: config
+          mountPath: /etc/auralink
+          readOnly: true
+        - name: logs
+          mountPath: /var/log/auralink
+      
+      volumes:
+      - name: config
+        configMap:
+          name: ingress-egress-config
+      - name: logs
+        emptyDir: {}
+      
+      affinity:
+        # Prefer spreading pods across nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - ingress-egress
+              topologyKey: kubernetes.io/hostname
+      
+      # Tolerate node taints for media workloads
+      tolerations:
+      - key: "media-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
