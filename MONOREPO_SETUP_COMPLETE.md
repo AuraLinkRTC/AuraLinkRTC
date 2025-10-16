@@ -82,8 +82,8 @@ All 5 core microservices are now in the monorepo:
 ```bash
 Repository: /Users/naveen/Desktop/AuraLink1
 Branch: main (default)
-Commits: 1 (initial commit)
-Remote: Not yet configured
+Commits: 2 (initial commit + docs)
+Remote: https://github.com/AuraLinkRTC/AuraLinkRTC.git ✅
 ```
 
 ### Initial Commit
@@ -103,15 +103,20 @@ Includes:
 
 ## 🚀 Next Steps
 
-### 1. **Add Git Remote** (Optional)
-If you want to push to GitHub/GitLab:
+### 1. **Push to GitHub** ✅
+Remote configured: `https://github.com/AuraLinkRTC/AuraLinkRTC.git`
 
+**To push your code:**
 ```bash
-# Create repo on GitHub/GitLab first, then:
-git remote add origin <your-repo-url>
-git branch -M main
+cd /Users/naveen/Desktop/AuraLink1
 git push -u origin main
 ```
+
+**Note:** You may need to authenticate with:
+- GitHub username
+- Personal Access Token (not password)
+
+Create token at: https://github.com/settings/tokens
 
 ### 2. **Set Up Branch Protection**
 On GitHub/GitLab:
